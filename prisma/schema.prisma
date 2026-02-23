@@ -1,0 +1,105 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String               @id @default(cuid())
+  email               String               @unique
+  password            String
+  name                String?
+  role                String               @default("USER") // "USER" or "ADMIN"
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  accounts            Account[]
+  transactions        Transaction[]
+  familyTransactions  FamilyTransaction[]
+  familyNotes         FamilyNote[]
+  familyMembers       FamilyMember[]
+}
+
+model Account {
+  id           String        @id @default(cuid())
+  userId       String
+  name         String
+  type         String        // "DEBIT" or "CREDIT"
+  balance      Float         @default(0)
+  bankName     String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([userId])
+}
+
+model Transaction {
+  id          String   @id @default(cuid())
+  userId      String
+  accountId   String
+  amount      Float
+  type        String   // "DEBIT" or "CREDIT"
+  category    String
+  description String?
+  merchant    String?
+  date        DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([accountId])
+  @@index([date])
+  @@index([category])
+}
+
+model FamilyTransaction {
+  id         String   @id @default(cuid())
+  userId     String
+  fromPerson String
+  toPerson   String
+  amount     Float
+  note       String?
+  isSettled  Boolean  @default(false)
+  date       DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([date])
+}
+
+model FamilyNote {
+  id          String   @id @default(cuid())
+  userId      String
+  title       String
+  content     String
+  type        String   @default("REMINDER") // "REMINDER", "SEND_MONEY", "RECEIVE_MONEY"
+  targetPerson String?
+  amount      Float?
+  isCompleted Boolean  @default(false)
+  dueDate     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model FamilyMember {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  relation  String?  // "Parent", "Sibling", "Spouse", "Child", "Other"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
