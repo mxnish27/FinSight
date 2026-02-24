@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowDownLeft, ArrowUpRight, Loader2, Trash2 } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Loader2, Trash2, Filter } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatCurrency, formatDate, CATEGORY_COLORS } from "@/lib/utils";
@@ -29,6 +29,7 @@ export function TransactionList({ onTransactionDeleted }: TransactionListProps) 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<'ALL' | 'CREDIT' | 'DEBIT'>('ALL');
 
   const fetchTransactions = async () => {
     try {
@@ -85,19 +86,49 @@ export function TransactionList({ onTransactionDeleted }: TransactionListProps) 
     );
   }
 
+  const filteredTransactions = transactions.filter(t => 
+    filter === 'ALL' ? true : t.type === filter
+  );
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Recent Transactions</CardTitle>
+    <Card className="bg-white border border-gray-200">
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="text-gray-900">Recent Transactions</CardTitle>
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+          <button
+            onClick={() => setFilter('ALL')}
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+              filter === 'ALL' ? 'bg-white text-gray-900' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            All
+          </button>
+          <button
+            onClick={() => setFilter('CREDIT')}
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+              filter === 'CREDIT' ? 'bg-emerald-100 text-emerald-700' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Income
+          </button>
+          <button
+            onClick={() => setFilter('DEBIT')}
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+              filter === 'DEBIT' ? 'bg-rose-100 text-rose-700' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Expense
+          </button>
+        </div>
       </CardHeader>
       <CardContent>
-        {transactions.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <p>No transactions yet. Add your first transaction to get started.</p>
+        {filteredTransactions.length === 0 ? (
+          <div className="text-center py-12 text-gray-400">
+            <p>{transactions.length === 0 ? 'No transactions yet. Add your first transaction to get started.' : 'No transactions match this filter.'}</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {transactions.slice(0, 10).map((transaction) => (
+          <div className="space-y-2">
+            {filteredTransactions.slice(0, 15).map((transaction) => (
               <div
                 key={transaction.id}
                 className="flex items-center justify-between p-4 rounded-xl bg-white hover:bg-blue-50 border border-gray-100 transition-colors"

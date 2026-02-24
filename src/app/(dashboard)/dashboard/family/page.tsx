@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowRight, ArrowDownLeft, ArrowUpRight, Loader2, Plus, Trash2, Users, StickyNote, Check, Calendar } from "lucide-react";
+import { ArrowRight, ArrowDownLeft, ArrowUpRight, Loader2, Plus, Trash2, Users, StickyNote, Check, Calendar, CheckCircle2, Banknote } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -56,6 +56,18 @@ interface Balance {
   balance: number;
 }
 
+interface Settlement {
+  from: string;
+  to: string;
+  amount: number;
+}
+
+interface MonthlySummary {
+  total: number;
+  count: number;
+  month: string;
+}
+
 export default function FamilyLedgerPage() {
   const [transactions, setTransactions] = useState<FamilyTransaction[]>([]);
   const [notes, setNotes] = useState<FamilyNote[]>([]);
@@ -67,6 +79,9 @@ export default function FamilyLedgerPage() {
   const [showMemberModal, setShowMemberModal] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [settlements, setSettlements] = useState<Settlement[]>([]);
+  const [monthlySummary, setMonthlySummary] = useState<MonthlySummary | null>(null);
+  const [isSettling, setIsSettling] = useState(false);
   const [newMemberName, setNewMemberName] = useState("");
   const [newMemberRelation, setNewMemberRelation] = useState("");
   const [formData, setFormData] = useState({
@@ -117,6 +132,35 @@ export default function FamilyLedgerPage() {
     }
   };
 
+  const fetchSettlements = async () => {
+    try {
+      const response = await fetch("/api/family-transactions/settle");
+      const data = await response.json();
+      setSettlements(data.settlements || []);
+      setMonthlySummary(data.monthlySummary || null);
+    } catch (error) {
+      console.error("Error fetching settlements:", error);
+    }
+  };
+
+  const handleSettleAll = async () => {
+    setIsSettling(true);
+    try {
+      const response = await fetch("/api/family-transactions/settle", {
+        method: "POST",
+      });
+      if (response.ok) {
+        toast({ title: "All Settled!", description: "All balances have been zeroed." });
+        fetchTransactions();
+        fetchSettlements();
+      }
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to settle", variant: "destructive" });
+    } finally {
+      setIsSettling(false);
+    }
+  };
+
   const calculateBalances = (txns: FamilyTransaction[], memberList: FamilyMember[]) => {
     const balanceMap: Record<string, number> = {};
     memberList.forEach((member) => {
@@ -137,6 +181,7 @@ export default function FamilyLedgerPage() {
       await fetchMembers();
       await fetchTransactions();
       await fetchNotes();
+      await fetchSettlements();
     };
     loadData();
   }, []);
@@ -345,9 +390,13 @@ export default function FamilyLedgerPage() {
             <Users className="w-4 h-4" />
             Transactions
           </TabsTrigger>
+          <TabsTrigger value="settle" className="gap-2">
+            <Banknote className="w-4 h-4" />
+            Settle
+          </TabsTrigger>
           <TabsTrigger value="notes" className="gap-2">
             <StickyNote className="w-4 h-4" />
-            Notes & Reminders
+            Notes
             {pendingNotes.length > 0 && (
               <span className="ml-1 px-1.5 py-0.5 text-xs bg-red-500 text-white rounded-full">
                 {pendingNotes.length}
@@ -401,6 +450,101 @@ export default function FamilyLedgerPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="settle">
+          <div className="space-y-6">
+            {/* Monthly Summary */}
+            {monthlySummary && (
+              <Card className="border-gray-200 bg-gradient-to-br from-violet-50 to-indigo-50">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-500">{monthlySummary.month} Summary</p>
+                      <p className="text-2xl font-bold text-gray-900">{formatCurrency(monthlySummary.total)}</p>
+                      <p className="text-sm text-gray-500">{monthlySummary.count} transactions</p>
+                    </div>
+                    <Button
+                      onClick={handleSettleAll}
+                      disabled={isSettling || settlements.length === 0}
+                      className="bg-emerald-600 hover:bg-emerald-700 gap-2"
+                    >
+                      {isSettling ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4" />
+                      )}
+                      Settle All
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Optimal Settlements */}
+            <Card className="border-gray-200">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base font-medium text-gray-900 flex items-center gap-2">
+                  <Banknote className="w-5 h-5 text-emerald-600" />
+                  Optimal Settlement Plan
+                </CardTitle>
+                <p className="text-sm text-gray-500">Minimum transactions needed to settle all balances</p>
+              </CardHeader>
+              <CardContent>
+                {settlements.length === 0 ? (
+                  <div className="text-center py-8">
+                    <CheckCircle2 className="w-12 h-12 mx-auto mb-3 text-emerald-500" />
+                    <p className="font-medium text-gray-900">All Settled!</p>
+                    <p className="text-sm text-gray-500">No pending balances to settle</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {settlements.map((s, i) => (
+                      <div key={i} className="flex items-center justify-between p-4 rounded-lg bg-amber-50 border border-amber-200">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+                            <span className="font-semibold text-amber-700">{s.from.charAt(0)}</span>
+                          </div>
+                          <ArrowRight className="w-5 h-5 text-amber-600" />
+                          <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center">
+                            <span className="font-semibold text-emerald-700">{s.to.charAt(0)}</span>
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900">{s.from} pays {s.to}</p>
+                          </div>
+                        </div>
+                        <span className="text-lg font-bold text-amber-700">{formatCurrency(s.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Net Balances */}
+            <Card className="border-gray-200">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base font-medium text-gray-900">Net Balances</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {balances.map((b) => (
+                    <div key={b.person} className="flex items-center justify-between p-3 rounded-lg bg-gray-50">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
+                          <span className="font-medium text-gray-700">{b.person.charAt(0)}</span>
+                        </div>
+                        <span className="font-medium text-gray-900">{b.person}</span>
+                      </div>
+                      <span className={`font-bold ${b.balance > 0 ? "text-emerald-600" : b.balance < 0 ? "text-red-500" : "text-gray-400"}`}>
+                        {b.balance > 0 ? "+" : ""}{formatCurrency(b.balance)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="notes">

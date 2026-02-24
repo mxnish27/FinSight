@@ -32,8 +32,8 @@ export function SpendingCharts({ categoryBreakdown, monthlyTrend }: SpendingChar
   const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ name: string; value: number; payload: { color: string } }> }) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-lg border border-border">
-          <p className="font-medium">{payload[0].name}</p>
+        <div className="bg-white p-3 rounded-lg border border-gray-200">
+          <p className="font-medium text-gray-900">{payload[0].name}</p>
           <p className="text-violet-600 font-semibold">{formatCurrency(payload[0].value)}</p>
         </div>
       );
@@ -44,10 +44,10 @@ export function SpendingCharts({ categoryBreakdown, monthlyTrend }: SpendingChar
   const BarTooltip = ({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-lg border border-border">
-          <p className="font-medium mb-2">{label}</p>
+        <div className="bg-white p-3 rounded-lg border border-gray-200">
+          <p className="font-medium mb-2 text-gray-900">{label}</p>
           {payload.map((entry, index) => (
-            <p key={index} style={{ color: entry.color }}>
+            <p key={index} style={{ color: entry.color }} className="font-medium">
               {entry.name}: {formatCurrency(entry.value)}
             </p>
           ))}
@@ -60,9 +60,9 @@ export function SpendingCharts({ categoryBreakdown, monthlyTrend }: SpendingChar
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
       {/* Category Pie Chart */}
-      <Card>
+      <Card className="bg-white border border-gray-200">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 text-gray-900">
             <PieChartIcon className="w-5 h-5 text-violet-600" />
             Spending by Category
           </CardTitle>
@@ -104,9 +104,9 @@ export function SpendingCharts({ categoryBreakdown, monthlyTrend }: SpendingChar
       </Card>
 
       {/* Monthly Trend Bar Chart */}
-      <Card>
+      <Card className="bg-white border border-gray-200">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 text-gray-900">
             <BarChart3 className="w-5 h-5 text-violet-600" />
             Monthly Trend
           </CardTitle>
