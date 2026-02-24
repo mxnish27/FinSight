@@ -34,9 +34,6 @@ const BANKS = [
   "Axis Bank",
   "Kotak Mahindra",
   "Yes Bank",
-  "IndusInd Bank",
-  "Punjab National Bank",
-  "Bank of Baroda",
   "Canara Bank",
   "Other",
 ];
