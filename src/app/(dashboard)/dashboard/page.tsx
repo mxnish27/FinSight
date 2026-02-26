@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, TrendingDown, TrendingUp, Wallet, Loader2, PieChart, Calendar, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { Plus, TrendingDown, TrendingUp, Wallet, Loader2, PieChart, Calendar, ArrowUpRight, ArrowDownRight, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/utils";
@@ -11,6 +11,7 @@ import { TransactionList } from "@/components/dashboard/transaction-list";
 import { SpendingCharts } from "@/components/dashboard/spending-charts";
 import { AIInsights } from "@/components/dashboard/ai-insights";
 import { QuickExpense } from "@/components/dashboard/quick-expense";
+import { PayCreditBillModal } from "@/components/dashboard/pay-credit-bill-modal";
 
 interface Account {
   id: string;
@@ -18,6 +19,10 @@ interface Account {
   type: string;
   balance: number;
   bankName?: string;
+  creditLimit?: number;
+  currentOutstanding?: number;
+  availableCredit?: number;
+  utilization?: number;
 }
 
 interface Stats {
@@ -36,6 +41,7 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [showAddTransaction, setShowAddTransaction] = useState(false);
   const [showAddAccount, setShowAddAccount] = useState(false);
+  const [showPayCreditBill, setShowPayCreditBill] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -69,6 +75,14 @@ export default function DashboardPage() {
     fetchData();
     setShowAddAccount(false);
   };
+
+  const handleCreditBillPaid = () => {
+    fetchData();
+    setShowPayCreditBill(false);
+  };
+
+  // Check if user has credit cards (support both old and new type names)
+  const hasCreditCards = accounts.some((a) => a.type === "CREDIT_CARD" || a.type === "CREDIT");
 
   if (isLoading) {
     return (
@@ -163,9 +177,22 @@ export default function DashboardPage() {
             <Wallet className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
             Accounts
           </CardTitle>
-          <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => setShowAddAccount(true)}>
-            <Plus className="w-4 h-4" />
-          </Button>
+          <div className="flex gap-1">
+            {hasCreditCards && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-8 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50" 
+                onClick={() => setShowPayCreditBill(true)}
+              >
+                <CreditCard className="w-4 h-4 sm:mr-1" />
+                <span className="hidden sm:inline text-xs">Pay Bill</span>
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => setShowAddAccount(true)}>
+              <Plus className="w-4 h-4" />
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
           {accounts.length === 0 ? (
@@ -175,31 +202,81 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
-              {accounts.map((account) => (
-                <div
-                  key={account.id}
-                  className={`p-3 sm:p-4 rounded-lg sm:rounded-xl border ${
-                    account.type === "CREDIT"
-                      ? "bg-amber-50 border-amber-200"
-                      : "bg-blue-50 border-blue-200"
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs sm:text-sm font-medium text-gray-600 truncate">{account.bankName || account.type}</span>
-                    <span className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full shrink-0 ${
-                      account.type === "CREDIT" 
-                        ? "bg-amber-100 text-amber-700" 
-                        : "bg-blue-100 text-blue-700"
-                    }`}>
-                      {account.type}
-                    </span>
+              {accounts.map((account) => {
+                const isCreditCard = account.type === "CREDIT_CARD" || account.type === "CREDIT";
+                
+                return (
+                  <div
+                    key={account.id}
+                    className={`p-3 sm:p-4 rounded-lg sm:rounded-xl border ${
+                      isCreditCard
+                        ? "bg-amber-50 border-amber-200"
+                        : "bg-blue-50 border-blue-200"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs sm:text-sm font-medium text-gray-600 truncate">{account.bankName || (isCreditCard ? "Credit Card" : "Bank")}</span>
+                      <span className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full shrink-0 ${
+                        isCreditCard 
+                          ? "bg-amber-100 text-amber-700" 
+                          : "bg-blue-100 text-blue-700"
+                      }`}>
+                        {isCreditCard ? "💳 Card" : "🏦 Bank"}
+                      </span>
+                    </div>
+                    <p className="font-semibold text-sm sm:text-base text-gray-900 truncate">{account.name}</p>
+                    
+                    {isCreditCard && account.creditLimit ? (
+                      // Credit Card Display
+                      <div className="mt-2 space-y-1.5">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-gray-500">Outstanding</span>
+                          <span className="font-semibold text-rose-600">
+                            {formatCurrency(account.currentOutstanding || 0)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-gray-500">Available</span>
+                          <span className="font-semibold text-emerald-600">
+                            {formatCurrency(account.availableCredit || (account.creditLimit - (account.currentOutstanding || 0)))}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-gray-500">Limit</span>
+                          <span className="font-medium text-gray-700">
+                            {formatCurrency(account.creditLimit)}
+                          </span>
+                        </div>
+                        {/* Utilization Bar */}
+                        <div className="mt-1">
+                          <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                            <div 
+                              className={`h-full rounded-full transition-all ${
+                                (account.utilization || 0) > 70 
+                                  ? "bg-rose-500" 
+                                  : (account.utilization || 0) > 30 
+                                    ? "bg-amber-500" 
+                                    : "bg-emerald-500"
+                              }`}
+                              style={{ width: `${Math.min(account.utilization || 0, 100)}%` }}
+                            />
+                          </div>
+                          <p className={`text-[10px] mt-0.5 text-right font-medium ${
+                            (account.utilization || 0) > 70 ? "text-rose-600" : "text-gray-500"
+                          }`}>
+                            {account.utilization || 0}% used
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      // Bank Account Display
+                      <p className={`text-lg sm:text-xl font-bold mt-1 truncate ${account.balance >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                        {formatCurrency(account.balance)}
+                      </p>
+                    )}
                   </div>
-                  <p className="font-semibold text-sm sm:text-base text-gray-900 truncate">{account.name}</p>
-                  <p className={`text-lg sm:text-xl font-bold mt-1 truncate ${account.balance >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
-                    {formatCurrency(account.balance)}
-                  </p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
@@ -234,6 +311,13 @@ export default function DashboardPage() {
         open={showAddAccount}
         onOpenChange={setShowAddAccount}
         onSuccess={handleAccountAdded}
+      />
+
+      <PayCreditBillModal
+        open={showPayCreditBill}
+        onOpenChange={setShowPayCreditBill}
+        accounts={accounts}
+        onSuccess={handleCreditBillPaid}
       />
     </div>
   );

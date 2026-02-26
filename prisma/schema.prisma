@@ -30,16 +30,18 @@ model User {
 }
 
 model Account {
-  id           String        @id @default(cuid())
-  userId       String
-  name         String
-  type         String        // "DEBIT" or "CREDIT"
-  balance      Float         @default(0)
-  bankName     String?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transactions Transaction[]
+  id                 String        @id @default(cuid())
+  userId             String
+  name               String
+  type               String        // "BANK" or "CREDIT_CARD"
+  balance            Float         @default(0)      // For BANK: available money
+  creditLimit        Float?                         // For CREDIT_CARD: max credit limit
+  currentOutstanding Float         @default(0)      // For CREDIT_CARD: amount owed
+  bankName           String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions       Transaction[]
 
   @@index([userId])
 }

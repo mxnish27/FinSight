@@ -14,7 +14,19 @@ export async function GET() {
       orderBy: { createdAt: "desc" },
     });
 
-    return NextResponse.json({ accounts });
+    // Add computed fields for credit cards
+    const accountsWithComputed = accounts.map((account) => {
+      if (account.type === "CREDIT_CARD" && account.creditLimit) {
+        return {
+          ...account,
+          availableCredit: account.creditLimit - account.currentOutstanding,
+          utilization: Math.round((account.currentOutstanding / account.creditLimit) * 100),
+        };
+      }
+      return account;
+    });
+
+    return NextResponse.json({ accounts: accountsWithComputed });
   } catch (error) {
     console.error("Get accounts error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -28,7 +40,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { name, type, balance, bankName } = await request.json();
+    const { name, type, balance, bankName, creditLimit } = await request.json();
 
     if (!name || !type) {
       return NextResponse.json(
@@ -37,19 +49,40 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate credit card requires credit limit
+    if (type === "CREDIT_CARD" && (!creditLimit || creditLimit <= 0)) {
+      return NextResponse.json(
+        { error: "Credit limit is required for credit cards" },
+        { status: 400 }
+      );
+    }
+
+    // Create account with proper fields
     const account = await prisma.account.create({
       data: {
         userId: authUser.userId,
         name,
         type,
-        balance: balance || 0,
-        bankName,
+        balance: type === "BANK" ? (balance || 0) : 0,
+        bankName: bankName || null,
+        creditLimit: type === "CREDIT_CARD" ? creditLimit : null,
+        currentOutstanding: type === "CREDIT_CARD" ? (balance || 0) : 0,
       },
     });
 
-    return NextResponse.json({ account });
+    // Add computed fields for response
+    const response = {
+      ...account,
+      ...(type === "CREDIT_CARD" && creditLimit ? {
+        availableCredit: creditLimit - (balance || 0),
+        utilization: Math.round(((balance || 0) / creditLimit) * 100),
+      } : {}),
+    };
+
+    return NextResponse.json({ account: response });
   } catch (error) {
     console.error("Create account error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: `Internal server error: ${errorMessage}` }, { status: 500 });
   }
 }

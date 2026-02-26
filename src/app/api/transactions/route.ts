@@ -64,11 +64,57 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Account not found" }, { status: 404 });
     }
 
+    const parsedAmount = parseFloat(amount);
+
+    // Handle CREDIT_CARD accounts differently (support both old "CREDIT" and new "CREDIT_CARD" types)
+    const accountRecord = account as Record<string, unknown>;
+    const isCreditCard = account.type === "CREDIT_CARD" || account.type === "CREDIT";
+    
+    if (isCreditCard) {
+      // For credit cards, DEBIT = spending (increases outstanding)
+      // CREDIT = refund/cashback (decreases outstanding)
+      const creditLimit = (accountRecord.creditLimit as number) || 0;
+      const currentOutstanding = (accountRecord.currentOutstanding as number) || 0;
+      
+      if (type === "DEBIT" && creditLimit > 0) {
+        // Check if spending would exceed credit limit
+        const newOutstanding = currentOutstanding + parsedAmount;
+        if (newOutstanding > creditLimit) {
+          return NextResponse.json(
+            { error: `Transaction would exceed credit limit. Available credit: ₹${(creditLimit - currentOutstanding).toLocaleString("en-IN")}` },
+            { status: 400 }
+          );
+        }
+      }
+
+      const transaction = await prisma.transaction.create({
+        data: {
+          userId: authUser.userId,
+          accountId,
+          amount: parsedAmount,
+          type,
+          category,
+          description,
+          merchant,
+          date: new Date(date || Date.now()),
+        },
+        include: { account: true },
+      });
+
+      // Update credit card outstanding using raw SQL to handle new field
+      // DEBIT (spend) = increase outstanding, CREDIT (refund) = decrease outstanding
+      const outstandingChange = type === "DEBIT" ? parsedAmount : -parsedAmount;
+      await prisma.$executeRaw`UPDATE "Account" SET "currentOutstanding" = "currentOutstanding" + ${outstandingChange} WHERE id = ${accountId}`;
+
+      return NextResponse.json({ transaction });
+    }
+
+    // Handle BANK accounts (normal behavior)
     const transaction = await prisma.transaction.create({
       data: {
         userId: authUser.userId,
         accountId,
-        amount: parseFloat(amount),
+        amount: parsedAmount,
         type,
         category,
         description,
@@ -78,8 +124,9 @@ export async function POST(request: NextRequest) {
       include: { account: true },
     });
 
-    // Update account balance
-    const balanceChange = type === "CREDIT" ? parseFloat(amount) : -parseFloat(amount);
+    // Update bank account balance
+    // CREDIT = money in, DEBIT = money out
+    const balanceChange = type === "CREDIT" ? parsedAmount : -parsedAmount;
     await prisma.account.update({
       where: { id: accountId },
       data: { balance: { increment: balanceChange } },

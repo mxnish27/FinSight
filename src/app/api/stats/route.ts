@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getAuthUser } from "@/lib/auth";
 
+// Categories that should NOT be counted as expenses (liability settlements)
+const EXCLUDED_EXPENSE_CATEGORIES = ["Bill Payment"];
+
 export async function GET(request: NextRequest) {
   try {
     const authUser = await getAuthUser();
@@ -31,6 +34,7 @@ export async function GET(request: NextRequest) {
         userId: authUser.userId,
         date: { gte: startDate, lte: endDate },
       },
+      include: { account: true },
     });
 
     let totalIncome = 0;
@@ -38,11 +42,23 @@ export async function GET(request: NextRequest) {
     const categoryTotals: Record<string, number> = {};
 
     transactions.forEach((t) => {
+      // Skip bill payments - they are liability settlements, not expenses
+      const isExcluded = EXCLUDED_EXPENSE_CATEGORIES.includes(t.category);
+      
       if (t.type === "CREDIT") {
-        totalIncome += t.amount;
+        // For BANK accounts, CREDIT = income
+        // For CREDIT_CARD, CREDIT = bill payment received (not income)
+        if (t.account.type === "BANK" && !isExcluded) {
+          totalIncome += t.amount;
+        }
       } else {
-        totalExpense += t.amount;
-        categoryTotals[t.category] = (categoryTotals[t.category] || 0) + t.amount;
+        // DEBIT transactions
+        // For BANK accounts: DEBIT = expense (unless it's bill payment)
+        // For CREDIT_CARD: DEBIT = spending (this IS an expense)
+        if (!isExcluded) {
+          totalExpense += t.amount;
+          categoryTotals[t.category] = (categoryTotals[t.category] || 0) + t.amount;
+        }
       }
     });
 
@@ -61,13 +77,18 @@ export async function GET(request: NextRequest) {
           userId: authUser.userId,
           date: { gte: trendStart, lte: trendEnd },
         },
+        include: { account: true },
       });
 
       let monthIncome = 0;
       let monthExpense = 0;
       monthTransactions.forEach((t) => {
-        if (t.type === "CREDIT") monthIncome += t.amount;
-        else monthExpense += t.amount;
+        const isExcluded = EXCLUDED_EXPENSE_CATEGORIES.includes(t.category);
+        if (t.type === "CREDIT" && t.account.type === "BANK" && !isExcluded) {
+          monthIncome += t.amount;
+        } else if (t.type === "DEBIT" && !isExcluded) {
+          monthExpense += t.amount;
+        }
       });
 
       monthlyTrend.push({
@@ -77,16 +98,23 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Get account balances
+    // Get account balances with proper credit card handling
     const accounts = await prisma.account.findMany({
       where: { userId: authUser.userId },
     });
 
     const accountBalances = accounts.map((a) => ({
       name: a.name,
-      balance: a.balance,
+      balance: a.type === "CREDIT_CARD" ? -a.currentOutstanding : a.balance, // Show outstanding as negative
       type: a.type,
+      creditLimit: a.creditLimit,
+      currentOutstanding: a.currentOutstanding,
     }));
+
+    // Calculate total liabilities (credit card outstanding)
+    const totalLiabilities = accounts
+      .filter((a) => a.type === "CREDIT_CARD")
+      .reduce((sum, a) => sum + a.currentOutstanding, 0);
 
     return NextResponse.json({
       totalIncome,
@@ -96,6 +124,7 @@ export async function GET(request: NextRequest) {
       monthlyTrend,
       accountBalances,
       transactionCount: transactions.length,
+      totalLiabilities,
     });
   } catch (error) {
     console.error("Get stats error:", error);
