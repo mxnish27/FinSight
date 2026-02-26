@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { accountId, amount, type, category, description, merchant, date } =
+    const { accountId, amount, type, category, description, merchant, date, transactionType } =
       await request.json();
 
     if (!accountId || !amount || !type || !category) {
@@ -70,6 +70,18 @@ export async function POST(request: NextRequest) {
     const accountRecord = account as Record<string, unknown>;
     const isCreditCard = account.type === "CREDIT_CARD" || account.type === "CREDIT";
     
+    // Determine transactionType automatically if not provided
+    // CREDIT on bank = INCOME, DEBIT = EXPENSE
+    // Credit card spending = EXPENSE
+    let finalTransactionType = transactionType;
+    if (!finalTransactionType) {
+      if (type === "CREDIT" && !isCreditCard) {
+        finalTransactionType = "INCOME";
+      } else {
+        finalTransactionType = "EXPENSE";
+      }
+    }
+
     if (isCreditCard) {
       // For credit cards, DEBIT = spending (increases outstanding)
       // CREDIT = refund/cashback (decreases outstanding)
@@ -93,6 +105,7 @@ export async function POST(request: NextRequest) {
           accountId,
           amount: parsedAmount,
           type,
+          transactionType: finalTransactionType,
           category,
           description,
           merchant,
@@ -116,6 +129,7 @@ export async function POST(request: NextRequest) {
         accountId,
         amount: parsedAmount,
         type,
+        transactionType: finalTransactionType,
         category,
         description,
         merchant,

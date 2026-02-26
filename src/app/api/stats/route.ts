@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getAuthUser } from "@/lib/auth";
 
-// Categories that should NOT be counted as expenses (liability settlements)
-const EXCLUDED_EXPENSE_CATEGORIES = ["Bill Payment"];
+// Transaction types that should be EXCLUDED from income/expense calculations
+// These are internal transfers and liability settlements
+const EXCLUDED_TRANSACTION_TYPES = ["CREDIT_CARD_PAYMENT", "TRANSFER"];
 
 export async function GET(request: NextRequest) {
   try {
@@ -42,23 +43,27 @@ export async function GET(request: NextRequest) {
     const categoryTotals: Record<string, number> = {};
 
     transactions.forEach((t) => {
-      // Skip bill payments - they are liability settlements, not expenses
-      const isExcluded = EXCLUDED_EXPENSE_CATEGORIES.includes(t.category);
+      const txRecord = t as Record<string, unknown>;
+      const transactionType = (txRecord.transactionType as string) || "EXPENSE";
       
-      if (t.type === "CREDIT") {
-        // For BANK accounts, CREDIT = income
-        // For CREDIT_CARD, CREDIT = bill payment received (not income)
-        if (t.account.type === "BANK" && !isExcluded) {
-          totalIncome += t.amount;
-        }
-      } else {
-        // DEBIT transactions
-        // For BANK accounts: DEBIT = expense (unless it's bill payment)
-        // For CREDIT_CARD: DEBIT = spending (this IS an expense)
-        if (!isExcluded) {
-          totalExpense += t.amount;
-          categoryTotals[t.category] = (categoryTotals[t.category] || 0) + t.amount;
-        }
+      // Skip CREDIT_CARD_PAYMENT and TRANSFER - they are internal movements, not income/expense
+      if (EXCLUDED_TRANSACTION_TYPES.includes(transactionType)) {
+        return; // Skip this transaction entirely
+      }
+      
+      // Also skip by category for backward compatibility with old transactions
+      if (t.category === "Bill Payment") {
+        return;
+      }
+      
+      if (transactionType === "INCOME" || (t.type === "CREDIT" && t.account.type === "BANK")) {
+        // INCOME transactions or CREDIT to bank accounts = income
+        totalIncome += t.amount;
+      } else if (transactionType === "EXPENSE" || t.type === "DEBIT") {
+        // EXPENSE transactions or DEBIT = expense
+        // Credit card spending (DEBIT on credit card) IS an expense
+        totalExpense += t.amount;
+        categoryTotals[t.category] = (categoryTotals[t.category] || 0) + t.amount;
       }
     });
 
@@ -83,10 +88,17 @@ export async function GET(request: NextRequest) {
       let monthIncome = 0;
       let monthExpense = 0;
       monthTransactions.forEach((t) => {
-        const isExcluded = EXCLUDED_EXPENSE_CATEGORIES.includes(t.category);
-        if (t.type === "CREDIT" && t.account.type === "BANK" && !isExcluded) {
+        const txRecord = t as Record<string, unknown>;
+        const transactionType = (txRecord.transactionType as string) || "EXPENSE";
+        
+        // Skip excluded transaction types
+        if (EXCLUDED_TRANSACTION_TYPES.includes(transactionType) || t.category === "Bill Payment") {
+          return;
+        }
+        
+        if (transactionType === "INCOME" || (t.type === "CREDIT" && t.account.type === "BANK")) {
           monthIncome += t.amount;
-        } else if (t.type === "DEBIT" && !isExcluded) {
+        } else if (transactionType === "EXPENSE" || t.type === "DEBIT") {
           monthExpense += t.amount;
         }
       });

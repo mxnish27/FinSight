@@ -94,14 +94,15 @@ export async function POST(request: NextRequest) {
     // Use transaction to ensure atomicity
     const result = await prisma.$transaction(async (tx) => {
       // 1. Create transfer record on bank account (money going out for bill payment)
-      // Category: "Bill Payment" - NOT counted as expense in stats
+      // transactionType: "CREDIT_CARD_PAYMENT" - NOT counted as expense or income
       const bankTransaction = await tx.transaction.create({
         data: {
           userId: authUser.userId,
           accountId: bankAccountId,
           amount: paymentAmount,
           type: "DEBIT",
-          category: "Bill Payment", // Special category - not counted as expense
+          transactionType: "CREDIT_CARD_PAYMENT", // Excluded from income/expense calculations
+          category: "Bill Payment",
           description: paymentDescription,
           merchant: creditCardBankName || creditCardName,
           date: now,
@@ -109,12 +110,14 @@ export async function POST(request: NextRequest) {
       });
 
       // 2. Create payment received record on credit card
+      // This is NOT income - it's a liability settlement
       const creditTransaction = await tx.transaction.create({
         data: {
           userId: authUser.userId,
           accountId: creditCardId,
           amount: paymentAmount,
-          type: "CREDIT", // CREDIT on credit card = payment received
+          type: "CREDIT",
+          transactionType: "CREDIT_CARD_PAYMENT", // Excluded from income/expense calculations
           category: "Bill Payment",
           description: `Payment from ${bankAccount.bankName || bankAccount.name}`,
           merchant: bankAccount.bankName || bankAccount.name,
